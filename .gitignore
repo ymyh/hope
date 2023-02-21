@@ -1,0 +1,7 @@
+/target
+/.vscode
+/.cargo
+SDL2.dll
+Cargo.lock
+soft_renderer.*
+/*.png
