@@ -1,7 +1,7 @@
 use crate::c_enum_impl;
 
 #[repr(i32)]
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum GLCompareFunc
 {
     Never     = 0b000,

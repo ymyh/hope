@@ -20,11 +20,9 @@ struct TestShader
 
     position: Vec<Vec4>,
 
-    //Attribute类配合#[attribute]使用
     #[attribute]
     colors: Attribute<Vec4>,
 
-    //如果是单线程，理论上可以不加，但是我建议还是加上#[uniform]
     #[uniform]
     mvp: Mat4,
 }
@@ -82,6 +80,7 @@ fn main()
     gl.depth_value(GLFunction::Reciprocal_W);   //使用w的倒数作为深度，默认是使用z
     gl.depth_func(GLCompareFunc::Greater);
     gl.clear(GLBufferBit::Color | GLBufferBit::Depth, &mut fb);
+    gl.enable(GLFunction::AlphaTest);
 
     gl.draw_arrays(&mut shader, 6 * 16, 0, &mut fb);
 

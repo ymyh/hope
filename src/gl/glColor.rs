@@ -272,6 +272,18 @@ impl MulAssign<Self> for GLColor
     }
 }
 
+impl Mul<u8> for GLColor
+{
+    type Output = Self;
+
+    fn mul(self, rhs: u8) -> Self::Output
+    {
+        let rhs = rhs as u16;
+        let (r, g, b, a) = self.into();
+        make_color!(div_255(r * rhs), div_255(g * rhs), div_255(b * rhs), div_255(a * rhs))
+    }
+}
+
 impl Mul<f32> for GLColor
 {
     type Output = Self;

@@ -102,10 +102,9 @@ impl GLFrameBuffer
     }
 
     #[unchecked::unchecked]
-    pub fn set_color(&mut self, x: i32, y: i32, color: GLColor, mask: u32)
+    pub fn set_color(&mut self, x: i32, y: i32, color: GLColor)
     {
-        let color: u32 = color.into();
-        self.color_buffer[y as usize * self.width + x as usize] = ((color & mask) | (color & !mask)).into()
+        self.color_buffer[y as usize * self.width + x as usize] = color;
     }
 
     #[unchecked::unchecked]

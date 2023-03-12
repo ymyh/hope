@@ -22,14 +22,14 @@ struct TestShader
     #[varying(TextureVarying)]
     varyings: Vec<TextureVarying>,
 
-    position: Vec<Vec4>,
+    positions: Vec<Vec4>,
     tex_coords: Vec<Vec2>,
 
     #[uniform]
     mvp: Mat4,
 
     #[sampler]
-    book_texture: Sampler2D,
+    book: Sampler2D,
 }
 
 impl Program<TextureVarying> for TestShader
@@ -37,19 +37,19 @@ impl Program<TextureVarying> for TestShader
     fn vertex(&mut self, index: usize) -> Vec4
     {
         self.varyings.push(TextureVarying { tex_coords: self.tex_coords[index] });
-        self.mvp * self.position[index]
+        self.mvp * self.positions[index]
     }
 
     //片段着色器的后半部分，可以直接从纹理当中取颜色
     fn fragment(&mut self, _: &TextureVarying, _: IVec2) -> GLColor
     {
-        self.book_texture.get_color()
+        self.book.get_color()
     }
 
     //是片段着色器的前半部分，使用sample函数为纹理采样
     fn sample(&mut self, varying: &TextureVarying)
     {
-        self.book_texture.sample(varying.tex_coords);
+        self.book.sample(varying.tex_coords);
     }
 }
 
@@ -69,15 +69,15 @@ fn main()
     fb.attach_color();
 
     let (vertices, tex_coords) = make_quad(1024.0, 512.0);
-    shader.position = vertices;
+    shader.positions = vertices;
     shader.tex_coords = tex_coords;
 
     let mut book = GLTexture::from_bytes(&read_image("./img/book.png"), 1024, 512).unwrap();
     book.create_mipmap(None);
 
-    shader.book_texture = Sampler2D::new(Arc::new(book));
-    shader.book_texture.set_mag_filter(GLFilterFunc::Linear);
-    shader.book_texture.set_min_filter(GLFilterFunc::LinearMipmapLinear);
+    shader.book = Sampler2D::new(Arc::new(book));
+    shader.book.set_mag_filter(GLFilterFunc::Linear);
+    shader.book.set_min_filter(GLFilterFunc::LinearMipmapLinear);
     
     let proj = Mat4::perspective_rh(60f32.to_radians(), 1920. / 1080., 1., 2000.);
     let view = Mat4::look_at_rh(Vec3::new(0., 0., -1.), Vec3::new(0., 0., 0.), Vec3::new(0., -1., 0.)).inverse();

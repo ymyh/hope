@@ -1,9 +1,7 @@
-use std::{ptr::addr_of_mut, fmt::Display};
+use std::{ptr::addr_of_mut};
 
 use glam::{Vec4, IVec2, Vec3, Vec3A, Vec2, UVec2};
 use threadPool::ThreadPool;
-
-use crate::make_color;
 
 use super::{shader::{program::Program, varying::Varying, shader::Shader}, enums::{glFunction::GLFunction, glCompareFunc::GLCompareFunc, glSamplePoint::GLSamplePoint, glBufferBit::GLBufferBit, glStencilOp::GLStencilOp, glBlendFunc::GLBlendFunc, glBlendEquation::GLBlendEquation}, glFrameBuffer::GLFrameBuffer, glColor::GLColor, util::{is_between, div_255}};
 
@@ -22,6 +20,10 @@ pub struct GLContext
     pool: ThreadPool,
 
     color_mask: u32,
+
+    alpha_test: bool,
+    alpha_func: GLCompareFunc,
+    alpha_ref: u8,
 
     depth_test: bool,
     depth_mask: u32,
@@ -42,6 +44,7 @@ pub struct GLContext
     blend_src_func: GLBlendFunc,
     blend_dst_func: GLBlendFunc,
     blend_equation: GLBlendEquation,
+    blend_color: GLColor,
 
     async_draw: bool,
     cull_face: bool,
@@ -71,6 +74,10 @@ impl GLContext
 
             color_mask: 0xFFFFFFFF,
 
+            alpha_test: false,
+            alpha_func: GLCompareFunc::Greater,
+            alpha_ref: 0x00,
+
             depth_test: false,
             depth_mask: 0xFFFFFFFF,
             depth_func: GLCompareFunc::Less,
@@ -90,6 +97,7 @@ impl GLContext
             blend_src_func: GLBlendFunc::One,
             blend_dst_func: GLBlendFunc::Zero,
             blend_equation: GLBlendEquation::Add,
+            blend_color: GLColor::ONE,
 
             async_draw: false,
             cull_face: false,
@@ -157,6 +165,11 @@ impl GLContext
     {
         match func
         {
+            GLFunction::AlphaTest =>
+            {
+                self.alpha_test = status;
+            }
+
             GLFunction::Blend =>
             {
                 self.blend = status;
@@ -200,8 +213,16 @@ impl GLContext
         }
     }
 
+    pub fn alpha_func(&mut self, func: GLCompareFunc, alpha: u8)
+    {
+        self.alpha_func = func;
+        self.alpha_ref = alpha;
+    }
+
     pub fn color_mask(&mut self, r: bool, g: bool, b: bool, a: bool)
     {
+        self.color_mask = 0xFFFFFFFF;
+
         self.color_mask &= if r { 0xFFFFFFFF } else { 0xFFFFFF00 };
         self.color_mask &= if g { 0xFFFFFFFF } else { 0xFFFF00FF };
         self.color_mask &= if b { 0xFFFFFFFF } else { 0xFF00FFFF };
@@ -262,6 +283,22 @@ impl GLContext
         self.anisotropic_filter = sample_point;
     }
 
+    pub fn blend_func(&mut self, src_factor: GLBlendFunc, dst_factor: GLBlendFunc)
+    {
+        self.blend_src_func = src_factor;
+        self.blend_dst_func = dst_factor;
+    }
+
+    pub fn blend_equation(&mut self, equation: GLBlendEquation)
+    {
+        self.blend_equation = equation;
+    }
+
+    pub fn blend_color(&mut self, color: GLColor)
+    {
+        self.blend_color = color;
+    }
+
     ///根据自身大小创建同等大小的帧缓冲
     pub fn create_buffer(&self) -> GLFrameBuffer
     {
@@ -279,58 +316,64 @@ impl GLContext
         if self.front_face_is_ccw { view.z < 0. } else { view.z > 0. }
     }
 
-    fn do_blend_color(&self, src_color: GLColor, dst_color: GLColor) -> GLColor
+    fn do_blend_color(&self, mut src_color: GLColor, mut dst_color: GLColor) -> GLColor
     {
-        let (mut sr, mut sg, mut sb, mut sa) = src_color.into();
-        let (mut dr, mut dg, mut db, mut da) = dst_color.into();
-
-        let one_minus_sa = 255 - sa;
-        let one_minus_da = 255 - da;
-
-        (sr, sg, sb, sa) = match self.blend_src_func
+        // println!("{:?}, {:?}", src_color, dst_color);
+        src_color = match self.blend_src_func
         {
-            GLBlendFunc::Zero => (0, 0, 0, 0),
-            GLBlendFunc::One => (sr, sg, sb, sa),
+            GLBlendFunc::Zero => GLColor::ZERO,
+            GLBlendFunc::One => src_color,
 
-            GLBlendFunc::SrcAlpha => (div_255(sr * sa), div_255(sg * sa), div_255(sb * sa), div_255(sa * sa)),
-            GLBlendFunc::DstAlpha => (div_255(sr * da), div_255(sg * da), div_255(sb * da), div_255(sa * da)),
-            GLBlendFunc::OneMinusSrcAlpha => (div_255(sr * one_minus_sa), div_255(sg * one_minus_sa), div_255(sb * one_minus_sa), div_255(sa * one_minus_sa)),
-            GLBlendFunc::OneMinusDstAlpha => (div_255(sr * one_minus_da), div_255(sg * one_minus_da), div_255(sb * one_minus_da), div_255(sa * one_minus_da)),
+            GLBlendFunc::SrcAlpha => src_color * src_color.a,
+            GLBlendFunc::DstAlpha => src_color * dst_color.a,
+            GLBlendFunc::OneMinusSrcAlpha => src_color * (255 - src_color.a),
+            GLBlendFunc::OneMinusDstAlpha => src_color * (255 - dst_color.a),
 
-            _ => (sr, sg, sb, sa),
+            GLBlendFunc::SrcColor => src_color * src_color,
+            GLBlendFunc::DstColor => src_color * dst_color,
 
-            // GLBlendFunc::SrcColor => todo!(),
-            // GLBlendFunc::DstColor => todo!(),
-            // GLBlendFunc::OneMinusSrcColor => todo!(),
-            // GLBlendFunc::OneMinusDstColor => todo!(),
+            GLBlendFunc::OneMinusSrcColor => src_color * (GLColor::ONE - src_color),
+            GLBlendFunc::OneMinusDstColor => src_color * (GLColor::ONE - dst_color),
+
+            GLBlendFunc::ConstColor => src_color * self.blend_color,
+            GLBlendFunc::OneMinusConstColor => src_color * (GLColor::ONE - self.blend_color),
+            GLBlendFunc::ConstAlpha => src_color * self.blend_color.a,
+            GLBlendFunc::OneMinusConstAlpha => src_color * (255 - self.blend_color.a),
         };
 
-        (dr, dg, db, da) = match self.blend_dst_func
+        dst_color = match self.blend_dst_func
         {
-            GLBlendFunc::Zero => (0, 0, 0, 0),
-            GLBlendFunc::One => (dr, dg, db, da),
+            GLBlendFunc::Zero => GLColor::ZERO,
+            GLBlendFunc::One => dst_color,
 
-            GLBlendFunc::SrcAlpha => (div_255(dr * sa), div_255(dg * sa), div_255(db * sa), div_255(da * sa)),
-            GLBlendFunc::DstAlpha => (div_255(dr * da), div_255(dg * da), div_255(db * da), div_255(da * da)),
-            GLBlendFunc::OneMinusSrcAlpha => (div_255(dr * one_minus_sa), div_255(dg * one_minus_sa), div_255(db * one_minus_sa), div_255(da * one_minus_sa)),
-            GLBlendFunc::OneMinusDstAlpha => (div_255(dr * one_minus_da), div_255(dg * one_minus_da), div_255(db * one_minus_da), div_255(da * one_minus_da)),
+            GLBlendFunc::SrcAlpha => dst_color * src_color.a,
+            GLBlendFunc::DstAlpha => dst_color * dst_color.a,
+            GLBlendFunc::OneMinusSrcAlpha => dst_color * (255 - src_color.a),
+            GLBlendFunc::OneMinusDstAlpha => dst_color * (255 - dst_color.a),
 
-            _ => (dr, dg, db, da),
+            GLBlendFunc::SrcColor => dst_color * src_color,
+            GLBlendFunc::DstColor => dst_color * dst_color,
 
-            // GLBlendFunc::SrcColor => todo!(),
-            // GLBlendFunc::DstColor => todo!(),
-            // GLBlendFunc::OneMinusSrcColor => todo!(),
-            // GLBlendFunc::OneMinusDstColor => todo!(),
+            GLBlendFunc::OneMinusSrcColor => dst_color * (GLColor::ONE - src_color),
+            GLBlendFunc::OneMinusDstColor => dst_color * (GLColor::ONE - dst_color),
+
+            GLBlendFunc::ConstColor => dst_color * self.blend_color,
+            GLBlendFunc::OneMinusConstColor => dst_color * (GLColor::ONE - self.blend_color),
+            GLBlendFunc::ConstAlpha => dst_color * self.blend_color.a,
+            GLBlendFunc::OneMinusConstAlpha => dst_color * (255 - self.blend_color.a),
         };
 
-        match self.blend_equation
+        let r = match self.blend_equation
         {
-            GLBlendEquation::Add => make_color!(u16::min(255, sr + dr), u16::min(255, sg + dg), u16::min(255, sb + db), u16::min(255, sa + da)),
-            GLBlendEquation::Subtract => make_color!(u16::min(255, sr - dr), u16::min(255, sg - dg), u16::min(255, sb - db), u16::min(255, sa - da)),
-            GLBlendEquation::ReverseSubtract => make_color!(u16::min(255, dr - sr), u16::min(255, dg - sg), u16::min(255, db - sb), u16::min(255, da - sa)),
-            GLBlendEquation::Min => make_color!(u16::min(sr, dr), u16::min(sg, dg), u16::min(sb, db), u16::min(sa, da)),
-            GLBlendEquation::Max => make_color!(u16::max(sr, dr), u16::max(sg, dg), u16::max(sb, db), u16::max(sa, da)),
-        }
+            GLBlendEquation::Add => src_color + dst_color,
+            GLBlendEquation::Subtract => src_color - dst_color,
+            GLBlendEquation::ReverseSubtract => dst_color - src_color,
+            GLBlendEquation::Min => src_color.min(dst_color),
+            GLBlendEquation::Max => src_color.max(dst_color),
+        };
+
+        
+        r
     }
 
     pub fn draw_arrays<S: Program<T> + Shader<T> + Clone + Send, T: Varying>
@@ -543,11 +586,7 @@ impl GLContext
                         //三角形重心坐标出现负值，证明在三角形外
                         if screen.x < 0. || screen.y < 0. || screen.z < 0.
                         {
-                            //0-0 1-1 2-0 3-1
-                            quad_x += if i % 2 == 0 { 1. } else { -1. };
-                            //0-0 1-0 2-1 3-1
-                            quad_y += if i % 2 == 0 { 0. } else {  1. };
-                            continue;
+
                         }
                         else
                         {
@@ -555,54 +594,21 @@ impl GLContext
                             { rhw }
                             else
                             { (z0 * screen.x + z1 * screen.y + z2 * screen.z) * w };
-
                             zs[i] = depth;
 
-                            //模板测试
-                            if self.stencil_test
+                            if !self.alpha_test
                             {
-                                if !compare_value(self.stencil_func, fb.get_stencil(xx, yy) & self.stencil_test_mask,
-                                self.stencil_ref & self.stencil_test_mask)
+                                if let Some(depth_test_failed) = self.do_stencil_depth_test(xx, yy, i as i32, &mut valid, depth, fb)
                                 {
-                                    some_test_failed = true;
-                                    do_stencil_op(self.stencil_fail_op, xx, yy, self.stencil_write_mask, self.stencil_ref, fb);
-
-                                    quad_x += if i % 2 == 0 { 1. } else { -1. };
-                                    quad_y += if i % 2 == 0 { 0. } else {  1. };
-                                    continue;
-                                }
-                            }
-
-                            //深度测试
-                            if self.depth_test
-                            {
-                                if compare_value(self.depth_func, fb.get_depth(xx, yy), depth)
-                                {
-                                    if self.depth_mask != 0 { fb.set_depth(xx, yy, depth); }
-
-                                    // let depth: u32 = unsafe {
-                                    //     std::mem::transmute(depth)
-                                    // };
-
-                                    // fb.set_depth(xx, yy, unsafe {
-                                    //     std::mem::transmute((depth & self.depth_mask) | (depth & !self.depth_mask))
-                                    // });
-
-                                    // do_stencil_op_ptr(self.all_pass_op, xx, yy, self.stencil_write_mask, self.stencil_ref, fb);
-                                    if self.stencil_test { do_stencil_op(self.all_pass_op, xx, yy, self.stencil_write_mask, self.stencil_ref, fb); }
-                                    valid |= 1 << i;
+                                    some_test_failed = depth_test_failed;
                                 }
                                 else
                                 {
-                                    // do_stencil_op_ptr(self.all_pass_op, xx, yy, self.stencil_write_mask, self.stencil_ref, fb);
-                                    if self.stencil_test { do_stencil_op(self.depth_fail_op, xx, yy, self.stencil_write_mask, self.stencil_ref, fb); }
                                     some_test_failed = true;
                                 }
                             }
                             else
                             {
-                                // do_stencil_op_ptr(self.all_pass_op, xx, yy, self.stencil_write_mask, self.stencil_ref, fb);
-                                if self.stencil_test { do_stencil_op(self.all_pass_op, xx, yy, self.stencil_write_mask, self.stencil_ref, fb); }
                                 valid |= 1 << i;
                             }
 
@@ -636,14 +642,48 @@ impl GLContext
 
                         if valid & (1 << i) != 0
                         {
-                            //混合
-                            if !self.blend
+                            if self.alpha_test
                             {
-                                fb.set_color(xx, yy, color, self.color_mask);
+                                if compare_value(self.alpha_func, self.alpha_ref, color.a)
+                                {
+                                    match self.do_stencil_depth_test(xx, yy, i as i32, &mut valid, zs[i], fb)
+                                    {
+                                        //模板或者深度测试不通过
+                                        None |
+                                        Some(true) =>
+                                        {
+                                            //0-0 1-1 2-0 3-1
+                                            xx += if i % 2 == 0 { 1 } else { -1 };
+                                            //0-0 1-0 2-1 3-1
+                                            yy += if i % 2 == 0 { 0 } else {  1 };
+                                            continue;
+                                        }
+
+                                        _ => {}
+                                    }
+                                }
+                                else
+                                {
+                                    //0-0 1-1 2-0 3-1
+                                    xx += if i % 2 == 0 { 1 } else { -1 };
+                                    //0-0 1-0 2-1 3-1
+                                    yy += if i % 2 == 0 { 0 } else {  1 };
+                                    continue;
+                                }
+                            }
+
+                            let keep_one: u32 = fb.get_color(xx, yy).into();
+
+                            //混合
+                            if self.blend
+                            {
+                                let color: u32 = self.do_blend_color(color, fb.get_color(xx, yy)).into();
+                                fb.set_color(xx, yy, GLColor::from((color & self.color_mask) | (keep_one & !self.color_mask)));
                             }
                             else
                             {
-                                fb.set_color(xx, yy, self.do_blend_color(color, fb.get_color(xx, yy)), self.color_mask);
+                                let color: u32 = color.into();
+                                fb.set_color(xx, yy, GLColor::from((color & self.color_mask) | (keep_one & !self.color_mask)));
                             }
                         }
 
@@ -782,13 +822,10 @@ impl GLContext
 
                                 if is_between(xx, min.x, max.x) && is_between(yy, min.y, max.y)
                                 {
+                                    //三角形重心坐标出现负值，证明在三角形外
                                     if screen.x < 0. || screen.y < 0. || screen.z < 0.
                                     {
-                                        //0-0 1-1 2-0 3-1
-                                        quad_x += if i % 2 == 0 { 1. } else { -1. };
-                                        //0-0 1-0 2-1 3-1
-                                        quad_y += if i % 2 == 0 { 0. } else {  1. };
-                                        continue;
+            
                                     }
                                     else
                                     {
@@ -796,63 +833,32 @@ impl GLContext
                                         { rhw }
                                         else
                                         { (z0 * screen.x + z1 * screen.y + z2 * screen.z) * w };
-            
                                         zs[i] = depth;
             
-                                        if this.stencil_test
+                                        if !this.alpha_test
                                         {
-                                            if !compare_value(this.stencil_func, fb.get_stencil(xx, yy) & this.stencil_test_mask,
-                                            this.stencil_ref & this.stencil_test_mask)
+                                            if let Some(depth_test_failed) = this.do_stencil_depth_test(xx, yy, i as i32, &mut valid, depth, fb)
                                             {
-                                                some_test_failed = true;
-                                                do_stencil_op(this.stencil_fail_op, xx, yy, this.stencil_write_mask, this.stencil_ref, fb);
-            
-                                                quad_x += if i % 2 == 0 { 1. } else { -1. };
-                                                quad_y += if i % 2 == 0 { 0. } else {  1. };
-                                                continue;
-                                            }
-                                        }
-            
-                                        if this.depth_test
-                                        {
-                                            if compare_value(this.depth_func, fb.get_depth(xx, yy), depth)
-                                            {
-                                                if this.depth_mask != 0 { fb.set_depth(xx, yy, depth); }
-            
-                                                // let depth: u32 = unsafe {
-                                                //     std::mem::transmute(depth)
-                                                // };
-            
-                                                // fb.set_depth(xx, yy, unsafe {
-                                                //     std::mem::transmute((depth & this.depth_mask) | (depth & !this.depth_mask))
-                                                // });
-            
-                                                // do_stencil_op_ptr(this.all_pass_op, xx, yy, this.stencil_write_mask, this.stencil_ref, fb);
-                                                if this.stencil_test { do_stencil_op(this.all_pass_op, xx, yy, this.stencil_write_mask, this.stencil_ref, fb); }
-                                                valid |= 1 << i;
+                                                some_test_failed = depth_test_failed;
                                             }
                                             else
                                             {
-                                                // do_stencil_op_ptr(this.all_pass_op, xx, yy, this.stencil_write_mask, this.stencil_ref, fb);
-                                                if this.stencil_test { do_stencil_op(this.depth_fail_op, xx, yy, this.stencil_write_mask, this.stencil_ref, fb); }
                                                 some_test_failed = true;
                                             }
                                         }
                                         else
                                         {
-                                            // do_stencil_op_ptr(this.all_pass_op, xx, yy, this.stencil_write_mask, this.stencil_ref, fb);
-                                            if this.stencil_test { do_stencil_op(this.all_pass_op, xx, yy, this.stencil_write_mask, this.stencil_ref, fb); }
                                             valid |= 1 << i;
                                         }
             
                                         inside = true;
                                     }
                                 }
-
+            
                                 //0-0 1-1 2-0 3-1
                                 quad_x += if i % 2 == 0 { 1. } else { -1. };
                                 //0-0 1-0 2-1 3-1
-                                quad_y += if i % 2 == 0 { 0. } else { 1. };
+                                quad_y += if i % 2 == 0 { 0. } else {  1. };
                             }
 
                             if valid != 0
@@ -873,14 +879,49 @@ impl GLContext
                                     if valid & (1 << i) != 0
                                     {
                                         let color = shader.fragment(&varyings[i], IVec2::new(xx, yy));
-            
-                                        if !this.blend
+
+                                        if this.alpha_test
                                         {
-                                            fb.set_color(xx, yy, color, this.color_mask);
+                                            if compare_value(this.alpha_func, this.alpha_ref, color.a)
+                                            {
+                                                match this.do_stencil_depth_test(xx, yy, i as i32, &mut valid, zs[i], fb)
+                                                {
+                                                    //模板或者深度测试不通过
+                                                    None |
+                                                    Some(true) =>
+                                                    {
+                                                        //0-0 1-1 2-0 3-1
+                                                        xx += if i % 2 == 0 { 1 } else { -1 };
+                                                        //0-0 1-0 2-1 3-1
+                                                        yy += if i % 2 == 0 { 0 } else {  1 };
+                                                        continue;
+                                                    }
+            
+                                                    _ => {}
+                                                }
+                                            }
+                                            else
+                                            {
+                                                //0-0 1-1 2-0 3-1
+                                                xx += if i % 2 == 0 { 1 } else { -1 };
+                                                //0-0 1-0 2-1 3-1
+                                                yy += if i % 2 == 0 { 0 } else {  1 };
+                                                continue;
+                                            }
+                                        }
+
+                                        let keep_one: u32 = fb.get_color(xx, yy).into();
+            
+                                        if this.blend
+                                        {
+                                            let color: u32 = this.do_blend_color(color, fb.get_color(xx, yy)).into();
+                                            
+                                            fb.set_color(xx, yy, GLColor::from((color & this.color_mask) | (keep_one & !this.color_mask)));
                                         }
                                         else
                                         {
-                                            fb.set_color(xx, yy, this.do_blend_color(color, fb.get_color(xx, yy)), this.color_mask);
+                                            let color: u32 = color.into();
+                                            fb.set_color(xx, yy, GLColor::from((color & this.color_mask) | (keep_one & !this.color_mask)));
                                         }
                                     }
 
@@ -904,6 +945,44 @@ impl GLContext
             }
         });
     }
+
+    /// bool为true代表模板测试通过，深度测试失败
+    fn do_stencil_depth_test(&self, xx: i32, yy: i32, i: i32, valid: &mut i32, depth: f32, fb: &mut GLFrameBuffer) -> Option<bool>
+    {
+        //模板测试
+        if self.stencil_test
+        {
+            if !compare_value(self.stencil_func, fb.get_stencil(xx, yy) & self.stencil_test_mask,
+            self.stencil_ref & self.stencil_test_mask)
+            {
+                do_stencil_op(self.stencil_fail_op, xx, yy, self.stencil_write_mask, self.stencil_ref, fb);
+                return None;
+            }
+        }
+
+        //深度测试
+        if self.depth_test
+        {
+            if compare_value(self.depth_func, fb.get_depth(xx, yy), depth)
+            {
+                if self.depth_mask != 0 { fb.set_depth(xx, yy, depth); }
+                if self.stencil_test { do_stencil_op(self.all_pass_op, xx, yy, self.stencil_write_mask, self.stencil_ref, fb); }
+                *valid |= 1 << i;
+            }
+            else
+            {
+                if self.stencil_test { do_stencil_op(self.depth_fail_op, xx, yy, self.stencil_write_mask, self.stencil_ref, fb); }
+                return Some(true);
+            }
+        }
+        else
+        {
+            if self.stencil_test { do_stencil_op(self.all_pass_op, xx, yy, self.stencil_write_mask, self.stencil_ref, fb); }
+            *valid |= 1 << i;
+        }
+
+        return Some(false);
+    }
 }
 
 /// 计算重心坐标
@@ -919,7 +998,7 @@ fn barycentric(mut a: Vec3A, mut b: Vec3A, p: Vec2) -> Vec3A
     Vec3A::new(1. - (u.x + u.y) * z, u.y * z, u.x * z)
 }
 
-pub fn compare_value<T: PartialOrd + Display>(func: GLCompareFunc, old: T, new: T) -> bool
+pub fn compare_value<T: PartialOrd>(func: GLCompareFunc, old: T, new: T) -> bool
 {
     match new.partial_cmp(&old).unwrap()
     {

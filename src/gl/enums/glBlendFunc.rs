@@ -13,4 +13,9 @@ pub enum GLBlendFunc
     DstColor,
     OneMinusSrcColor,
     OneMinusDstColor, 
+
+    ConstColor,
+    OneMinusConstColor,
+    ConstAlpha,
+    OneMinusConstAlpha,
 }

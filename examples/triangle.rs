@@ -16,8 +16,9 @@ struct TriangleShader
     varyings: Vec<ColorVarying>,
 
     //下面这两个是attribute
-    position: Vec<Vec2>,
-    colors: Vec<GLColor>,
+    positions: Vec<Vec2>,
+    // colors: Vec<GLColor>,
+    colors: Vec<Vec4>,
 }
 
 impl Program<ColorVarying> for TriangleShader
@@ -26,13 +27,14 @@ impl Program<ColorVarying> for TriangleShader
     {
         //向varying写入值
         self.varyings.push(ColorVarying { color: self.colors[index] });
-        Vec4::from((self.position[index], 0.0, 1.0))
+        Vec4::from((self.positions[index], 0.0, 1.0))
     }
 
     //第一个参数是已经插值好的数据，第二个是像素的位置
     fn fragment(&mut self, varying: &ColorVarying, _: IVec2) -> GLColor
     {
-        varying.color
+        // varying.color
+        varying.color.into()
     }
 
     //暂时用不到
@@ -45,7 +47,8 @@ impl Program<ColorVarying> for TriangleShader
 #[derive(Clone, Copy, Default, Varying)]
 struct ColorVarying
 {
-    color: GLColor,
+    // color: GLColor,
+    color: Vec4,
 }
 
 fn main()
@@ -57,13 +60,18 @@ fn main()
     //添加颜色附着
     fb.attach_color();
 
-    shader.position = vec![
+    shader.positions = vec![
         Vec2::new(0.0, 0.5),
         Vec2::new(-0.5, -0.5),
         Vec2::new(0.5, -0.5),
     ];
 
-    shader.colors = vec![make_color!(255, 0, 0), make_color!(0, 255, 0), make_color!(0, 0, 255)];
+    // shader.colors = vec![make_color!(255, 0, 0), make_color!(0, 255, 0), make_color!(0, 0, 255)];
+    shader.colors = vec![
+        Vec4::new(1.0, 0.0, 0.0, 1.0),
+        Vec4::new(0.0, 1.0, 0.0, 1.0),
+        Vec4::new(0.0, 0.0, 1.0, 1.0)
+    ];
 
     gl.clear_color(make_color!(255));
     gl.clear(GLBufferBit::Color, &mut fb);
