@@ -124,7 +124,7 @@ impl GLFrameBuffer
         self.color_buffer = buffer;
     }
 
-    pub fn do_clear_color(&mut self, color: GLColor)
+    pub(crate) fn do_clear_color(&mut self, color: GLColor)
     {
         if color.r == color.g &&
         color.r == color.b &&

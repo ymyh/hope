@@ -9,4 +9,6 @@ pub trait Sampler
     fn get_aniso_level(&self) -> f32;
     fn get_sample_point(&self) -> i32;
     fn get_ddxy(&self) -> Vec2;
+
+    fn compute_level(&mut self, sample_point: i32);
 }

@@ -74,6 +74,24 @@ impl Sampler for Sampler2D
     {
         self.ddxy
     }
+
+    /// 这个函数应该由宏生成的函数自动调用，计算mipmap等级
+    fn compute_level(&mut self, sample_point: i32)
+    {
+        self.ddx = self.sampled_pixels_st[1] - self.sampled_pixels_st[0];
+        self.ddy = self.sampled_pixels_st[2] - self.sampled_pixels_st[0];
+
+        let ddx_len_power2 = self.ddx.dot(self.ddx);
+        let ddy_len_power2 = self.ddy.dot(self.ddy);
+
+        self.long_level = log2(f32::max(ddx_len_power2, ddy_len_power2)) * 0.5;
+
+        if sample_point != 1 && self.long_level > 0.
+        {
+            self.anisotropic_level(ddx_len_power2, ddy_len_power2, sample_point);
+        }
+        self.sample_point = sample_point;
+    }
 }
 
 impl Sampler2D
@@ -128,24 +146,6 @@ impl Sampler2D
 
         self.sampled_pixels_uv[self.sampled_idx] = uv;
         self.sampled_idx = if self.sampled_idx == 3 { 0 } else { self.sampled_idx + 1 };
-    }
-
-    /// 虽然是pub，但是应该由宏生成的函数自动调用，计算mipmap等级
-    pub fn compute_level(&mut self, sample_point: i32)
-    {
-        self.ddx = self.sampled_pixels_st[1] - self.sampled_pixels_st[0];
-        self.ddy = self.sampled_pixels_st[2] - self.sampled_pixels_st[0];
-
-        let ddx_len_power2 = self.ddx.dot(self.ddx);
-        let ddy_len_power2 = self.ddy.dot(self.ddy);
-
-        self.long_level = log2(f32::max(ddx_len_power2, ddy_len_power2)) * 0.5;
-
-        if sample_point != 1 && self.long_level > 0.
-        {
-            self.anisotropic_level(ddx_len_power2, ddy_len_power2, sample_point);
-        }
-        self.sample_point = sample_point;
     }
 
     /// 计算各项异性过滤mipmap等级

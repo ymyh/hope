@@ -52,14 +52,14 @@ impl<'env> ThreadPool
 
     pub(crate) fn dispatch(&'env self, func: Box<dyn FnOnce() + Send>)
     {
-        let mut idx = self.idx.get();
+        let idx;
         let mut task_senders = self.task_senders.take();
 
-        if idx == task_senders.len()
+        if self.idx.get() == task_senders.len()
         {
             self.idx.set(0);
-            idx = 0;
         }
+        idx = self.idx.get();
 
         if let Err(e) = task_senders[idx].send(func)
         {

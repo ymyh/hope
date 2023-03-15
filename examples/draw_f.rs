@@ -80,7 +80,6 @@ fn main()
     gl.depth_value(GLFunction::Reciprocal_W);   //使用w的倒数作为深度，默认是使用z
     gl.depth_func(GLCompareFunc::Greater);
     gl.clear(GLBufferBit::Color | GLBufferBit::Depth, &mut fb);
-    gl.enable(GLFunction::AlphaTest);
 
     gl.draw_arrays(&mut shader, 6 * 16, 0, &mut fb);
 

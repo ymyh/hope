@@ -15,6 +15,7 @@ use image::ColorType;
 use shader::Shader;
 use varying::Varying;
 use hope::gl::shader::varying::Varying;
+use hope::gl::sampler::sampler::Sampler;
 
 #[derive(Default, Shader)]
 struct TestShader

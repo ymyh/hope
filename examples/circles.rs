@@ -17,6 +17,7 @@ use shader::Shader;
 use varying::Varying;
 use hope::gl::shader::shader::Shader;
 use hope::gl::shader::varying::Varying;
+use hope::gl::sampler::sampler::Sampler;
 
 //画圆形着色器
 #[derive(Default, Shader)]

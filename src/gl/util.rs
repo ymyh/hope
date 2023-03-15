@@ -204,7 +204,7 @@ pub fn is_between<T: Ord>(value: T, min: T, max: T) -> bool
     value >= min && value <= max
 }
 
-//非常经典的一段代码
+/// 非常经典的一段代码
 pub fn inv_sqrt(mut num: f32) -> f32
 {
 	let mut i: u32;
@@ -219,6 +219,7 @@ pub fn inv_sqrt(mut num: f32) -> f32
 	num
 }
 
+/// 同样很经典
 pub fn sqrt(mut num: f32) -> f32
 {
     let a = num;

@@ -9,7 +9,8 @@ Rust编写的OpenGL风格软渲API
 - 多种纹理插值选项，包括双线性，三线性以及各向异性过滤
 - 多线程绘制（配合SDL2使用更佳）
 
-有三个例子，在命令行输入命令以查看，它们会在项目根目录输出png图片
+这里有几个例子，在命令行输入命令以查看，它们会在项目根目录输出png图片
+
 `cargo r --example triangle`
 
 `cargo r --example draw_f`

@@ -32,15 +32,17 @@ impl GLTexture
     }
 
     /// 只支持二次幂长宽的纹理，否则不会做任何事
-    pub fn create_mipmap(&mut self, level: Option<u32>)
+    pub fn create_mipmap(&mut self, level: Option<u32>) -> bool
     {
         if self.width & (self.width - 1) != 0 || self.height & (self.height - 1) != 0
         {
-            return;
+            return false;
         }
 
         let level = level.unwrap_or(u32::MAX);
         self.create_mipmap_inner(self.width, self.height, level);
+
+        return true;
     }
 
     fn create_mipmap_inner(&mut self, mut width: usize, mut height: usize, level: u32)

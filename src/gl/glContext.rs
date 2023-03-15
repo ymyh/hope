@@ -1,9 +1,9 @@
-use std::{ptr::addr_of_mut};
+use std::ptr::addr_of_mut;
 
 use glam::{Vec4, IVec2, Vec3, Vec3A, Vec2, UVec2};
 use threadPool::ThreadPool;
 
-use super::{shader::{program::Program, varying::Varying, shader::Shader}, enums::{glFunction::GLFunction, glCompareFunc::GLCompareFunc, glSamplePoint::GLSamplePoint, glBufferBit::GLBufferBit, glStencilOp::GLStencilOp, glBlendFunc::GLBlendFunc, glBlendEquation::GLBlendEquation}, glFrameBuffer::GLFrameBuffer, glColor::GLColor, util::{is_between, div_255}};
+use super::{shader::{program::Program, varying::Varying, shader::Shader}, enums::{glFunction::GLFunction, glCompareFunc::GLCompareFunc, glSamplePoint::GLSamplePoint, glBufferBit::GLBufferBit, glStencilOp::GLStencilOp, glBlendFunc::GLBlendFunc, glBlendEquation::GLBlendEquation}, glFrameBuffer::GLFrameBuffer, glColor::GLColor, util::is_between};
 
 pub struct GLContext
 {
@@ -133,6 +133,7 @@ impl GLContext
         self.stencil = stencil;
     }
 
+    /// 目前会忽略viewport大小，清除整个帧缓冲
     pub fn clear(&self, bits: GLBufferBit, fb: &mut GLFrameBuffer)
     {
         if bits & GLBufferBit::Color == GLBufferBit::Color
@@ -318,7 +319,6 @@ impl GLContext
 
     fn do_blend_color(&self, mut src_color: GLColor, mut dst_color: GLColor) -> GLColor
     {
-        // println!("{:?}, {:?}", src_color, dst_color);
         src_color = match self.blend_src_func
         {
             GLBlendFunc::Zero => GLColor::ZERO,
@@ -419,6 +419,7 @@ impl GLContext
                 }
                 else
                 {
+                    //计算w的倒数并存到w里面
                     let rhw = 1. / vert[0].w;
                     vert[0] *= rhw;
                     vert[0].w = rhw;
@@ -499,6 +500,7 @@ impl GLContext
             (1. - vertices[2].y) * self.height as f32 * 0.5 + max.y as f32)
         ];
 
+        //计算三角形AABB
         for v in vert
         {
             min.x = i32::min(min.x, v.x as i32);
@@ -596,6 +598,7 @@ impl GLContext
                             { (z0 * screen.x + z1 * screen.y + z2 * screen.z) * w };
                             zs[i] = depth;
 
+                            //如果没有alpha test，那么开启early z culling
                             if !self.alpha_test
                             {
                                 if let Some(depth_test_failed) = self.do_stencil_depth_test(xx, yy, i as i32, &mut valid, depth, fb)
@@ -642,6 +645,7 @@ impl GLContext
 
                         if valid & (1 << i) != 0
                         {
+                            //开启了alpha test，这里才进行模板和深度测试
                             if self.alpha_test
                             {
                                 if compare_value(self.alpha_func, self.alpha_ref, color.a)
